@@ -17,7 +17,26 @@ def compute_psnr(img1, img2):
 
       @return: Peak signal-to-noise ratio between the first and second image
     """
-    return
+
+    # check images have same size
+    if img1.shape != img2.shape:
+        return -1
+
+    # compute mse
+    mse = 0
+    for y in img1.shape[0]:
+        for x in img1.shape[1]:
+            diff = img1[x, y] - img2[x, y]
+            mse += diff * diff
+
+    # normalize mse
+    mse /= img1.shape[0] * img2.shape[1]
+
+    # compute psnr
+    max_value = 255
+    psnr = 10 * np.log10(max_value / np.sqrt(mse))
+
+    return psnr
 
 
 def compute_mean(image, filter_size):
@@ -28,6 +47,11 @@ def compute_mean(image, filter_size):
 
       @return: image containing the mean for each pixel
     """
+
+    # compute sliding window technique, first filter in x
+
+    # now filter the same way but in y
+
     return
 
 
@@ -56,6 +80,10 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
 
       @return: image containing a_k for each pixel
     """
+
+    numerator = # TODO
+    denominator = variance + epsilon
+
     return
 
 
@@ -69,7 +97,11 @@ def compute_b(m, a, mu):
 
       @return: image containing b_k for each pixel
     """
-    return
+
+    # use the formula in the pdf
+    b = m - a * mu
+
+    return b
 
 
 def compute_q(mean_a, mean_b, I):
@@ -77,7 +109,11 @@ def compute_q(mean_a, mean_b, I):
       Compute the final filtered result 'q' as described in the task (equation 6)
       @return: filtered image
     """
-    return
+
+    # use the formula in the pdf
+    q = mean_a * I + mean_b
+
+    return q
 
 
 def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon):
