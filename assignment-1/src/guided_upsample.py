@@ -286,8 +286,25 @@ def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
 
 
 def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
+    """
+      Perform an upsampling of a lower res color image using a higher res grayscale guidance image
 
-    return
+      @param: input_img The image to be upsampled
+      @param: guidance_img The upsampled version of the same image but grayscale
+      @param: filter_size
+      @param: epsilon The smoothing factor of the guided filter
+
+      @returns:
+        upsampled_img A higher resolution version of the input image, with the resolution of the guidance image
+    """
+
+    # Resize input image to guidance image res
+    upsampled_img = resize(input_img, (guidance_img.shape[0], guidance_img.shape[1]), anti_aliasing=True)
+
+    # Filter the image using the guidance image
+    upsampled_img = calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
+
+    return upsampled_img
 
 
 def prepare_imgs(input_filename, upsample_ratio):
@@ -303,23 +320,45 @@ def prepare_imgs(input_filename, upsample_ratio):
         reference_img: the high resolution reference image, this should only be used for calculation of the PSNR and plots for comparison
     """
 
+    # Load original image
     initial_img = io.imread(input_filename)
-    guidance_img = # TODO
-    input_img = # TODO
+
+    # Calculate grayscale for guidance image
+    guidance_img = rgb2gray(initial_img)
+
+    # Downsample original image
+    input_img = resize(initial_img, (initial_img.shape[0] // upsample_ratio, initial_img.shape[1] // upsample_ratio), anti_aliasing=True)
+
     return input_img, guidance_img, initial_img
 
 
-def plot_result(input_img, guidance_img, filtered_img):
-    pass
+def plot_result(input_img, guidance_img, filtered_img, output_filename):
+
+    # Prepare the figure
+    fig, axes = plt.subplots(nrows=1, ncols=3)
+
+    ax = axes.ravel()
+    ax[0].imshow(input_img)
+    ax[1].imshow(guidance_img)
+    ax[2].imshow(filtered_img)
+
+    ax[0].set_title("Input image")
+    ax[1].set_title("Guidance image")
+    ax[2].set_title("Upsampled image")
+
+    plt.tight_layout()
+    plt.show()
+    plt.savefig(output_filename)
+    return
 
 
 if __name__ == "__main__":
     start_time = time.time()
 
     # Set Parameters
-    downsample_ratio = # TODO
-    filter_size = # TODO
-    epsilon = # TODO
+    upsample_ratio = 5.0
+    filter_size = 10
+    epsilon = 1
 
     # Parse Parameter
     if len(sys.argv) != 2:
@@ -327,14 +366,14 @@ if __name__ == "__main__":
     input_filename = sys.argv[1]
 
     # Prepare Images
-    input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
+    input_img, guidance_img, initial_img = prepare_imgs(input_filename, upsample_ratio)
 
     # Perform Guided Upsampling
 
-    # approach (1):
+    # Approach (1):
     filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
 
-    # approach (2):
+    # Approach (2):
     filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
 
     # Calculate PSNR
@@ -344,8 +383,8 @@ if __name__ == "__main__":
     psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
     psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
-    print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2,
-                                                                                                                                                           psnr_filtered_1, psnr_upsampled_1))
+    print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2, psnr_filtered_1, psnr_upsampled_1))
+
     # Plot result
-    plot_result(input_img, guidance_img, filtered_img_2)
-    plot_result(input_img, guidance_img, filtered_img_1)
+    plot_result(input_img, guidance_img, filtered_img_2, "method2.png")
+    plot_result(input_img, guidance_img, filtered_img_1, "method1.png")
