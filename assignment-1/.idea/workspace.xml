@@ -2,8 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d35a4290-d99a-4c2b-bf61-a7bf680d5baf" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/Assignment 1.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Assignment 1.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/guided_upsample.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/guided_upsample.py" afterDir="false" />
     </list>
@@ -35,7 +33,7 @@
   <component name="PropertiesComponent">
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../.." />
   </component>
   <component name="RunDashboard">
     <option name="ruleStates">
@@ -85,7 +83,12 @@
       <updated>1572623510749</updated>
       <workItem from="1572623511889" duration="2711000" />
       <workItem from="1572702481683" duration="231000" />
-      <workItem from="1572730435592" duration="2676000" />
+      <workItem from="1572730435592" duration="4015000" />
+      <workItem from="1572768687503" duration="78000" />
+      <workItem from="1572768875528" duration="2056000" />
+      <workItem from="1572781381332" duration="2490000" />
+      <workItem from="1572791853208" duration="745000" />
+      <workItem from="1572792668784" duration="1702000" />
     </task>
     <servers />
   </component>
