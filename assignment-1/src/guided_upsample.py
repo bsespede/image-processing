@@ -56,29 +56,29 @@ def compute_mean(image, filter_size):
     image_padded = np.pad(image, ((radius, radius), (radius, radius)), 'symmetric')
 
     # Build the sliding window
-    cimgs_r = []
+    cimgs = []
 
     for fi in range(filter_size):
         for fj in range(filter_size):
 
             if -(filter_size - fi) + 1 == 0 and -(filter_size - fj) + 1 == 0:
-                cimg_r = image_padded[fi:, fj:]
+                cimg = image_padded[fi:, fj:]
             elif -(filter_size - fi) + 1 == 0:
-                cimg_r = image_padded[fi:, fj: -(filter_size - fj) + 1]
+                cimg = image_padded[fi:, fj: -(filter_size - fj) + 1]
             elif -(filter_size - fj) + 1 == 0:
-                cimg_r = image_padded[fi: -(filter_size - fi) + 1, fj:]
+                cimg = image_padded[fi: -(filter_size - fi) + 1, fj:]
             else:
-                cimg_r = image_padded[fi: -(filter_size - fi) + 1, fj: -(filter_size - fj) + 1]
+                cimg = image_padded[fi: -(filter_size - fi) + 1, fj: -(filter_size - fj) + 1]
 
-            cimgs_r.append(cimg_r)
+            cimgs.append(cimg)
 
     # Convert list of images to 3D array
-    cimgs_r_as_array = np.asarray(cimgs_r)
+    cimgs_as_array = np.asarray(cimgs)
 
     # Perform mean for each channel and merge
-    image_mean_r = np.mean(cimgs_r_as_array, axis=0)
+    image_mean = np.mean(cimgs_as_array, axis=0)
 
-    return image_mean_r
+    return image_mean
 
 
 def compute_variance(image, filter_size):
@@ -95,28 +95,28 @@ def compute_variance(image, filter_size):
     img = np.pad(image, ((radius, radius), (radius, radius)), 'symmetric')
 
     # Build the sliding windows
-    cimgs_r = []
+    cimgs = []
 
     for fi in range(filter_size):
         for fj in range(filter_size):
             if -(filter_size - fi) + 1 == 0 and -(filter_size - fj) + 1 == 0:
-                cimg_r = img[fi:, fj:]
+                cimg = img[fi:, fj:]
             elif -(filter_size - fi) + 1 == 0:
-                cimg_r = img[fi:, fj: -(filter_size - fj) + 1]
+                cimg = img[fi:, fj: -(filter_size - fj) + 1]
             elif -(filter_size - fj) + 1 == 0:
-                cimg_r = img[fi: -(filter_size - fi) + 1, fj:]
+                cimg = img[fi: -(filter_size - fi) + 1, fj:]
             else:
-                cimg_r = img[fi: -(filter_size - fi) + 1, fj: -(filter_size - fj) + 1]
+                cimg = img[fi: -(filter_size - fi) + 1, fj: -(filter_size - fj) + 1]
 
-            cimgs_r.append(cimg_r)
+            cimgs.append(cimg)
 
     # Convert list of images to 3D array
-    cimgs_r_as_array = np.asarray(cimgs_r)
+    cimgs_as_array = np.asarray(cimgs)
 
     # Perform var for each channel and merge
-    image_var_r = np.var(cimgs_r_as_array, axis=0)
+    image_var = np.var(cimgs_as_array, axis=0)
 
-    return image_var_r
+    return image_var
 
 
 def compute_a(F, I, m, mu, variance, filter_size, epsilon):
@@ -140,32 +140,30 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
     F_padded = np.pad(F, ((radius, radius), (radius, radius)), 'symmetric')
 
     # Build the windows for each channel and jointly multiply F by I
-    cimgs_r = []
-    cimgs_g = []
-    cimgs_b = []
+    cimgs = []
 
     for fi in range(filter_size):
         for fj in range(filter_size):
 
             if -(filter_size - fi) + 1 == 0 and -(filter_size - fj) + 1 == 0:
-                cimg_r = F_padded[fi:, fj:] * I_padded[fi:, fj:]
+                cimg = F_padded[fi:, fj:] * I_padded[fi:, fj:]
             elif -(filter_size - fi) + 1 == 0:
-                cimg_r = F_padded[fi:, fj: -(filter_size - fj) + 1] * I_padded[fi:, fj: -(filter_size - fj) + 1]
+                cimg = F_padded[fi:, fj: -(filter_size - fj) + 1] * I_padded[fi:, fj: -(filter_size - fj) + 1]
             elif -(filter_size - fj) + 1 == 0:
-                cimg_r = F_padded[fi: -(filter_size - fi) + 1, fj:] * I_padded[fi: -(filter_size - fi) + 1, fj:]
+                cimg = F_padded[fi: -(filter_size - fi) + 1, fj:] * I_padded[fi: -(filter_size - fi) + 1, fj:]
             else:
-                cimg_r = F_padded[fi: -(filter_size - fi) + 1, fj: -(filter_size - fj) + 1] * I_padded[fi: -(filter_size - fi) + 1,fj: -(filter_size - fj) + 1]
+                cimg = F_padded[fi: -(filter_size - fi) + 1, fj: -(filter_size - fj) + 1] * I_padded[fi: -(filter_size - fi) + 1,fj: -(filter_size - fj) + 1]
 
-            cimgs_r.append(cimg_r)
+            cimgs.append(cimg)
 
     # Convert list of images to 3D array
-    cimgs_r_as_array = np.asarray(cimgs_r)
+    cimgs_as_array = np.asarray(cimgs)
 
     # Perform mean for the F*I channels and merge
-    mean_fi_r = np.mean(cimgs_r_as_array, axis=0)
+    mean_fi = np.mean(cimgs_as_array, axis=0)
 
     # Compute a
-    a = (mean_fi_r - m * mu) / (variance + epsilon)
+    a = (mean_fi - m * mu) / (variance + epsilon)
 
     return a
 
@@ -219,22 +217,21 @@ def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
     guidance_img_mean = compute_mean(guidance_img, filter_size)
     guidance_img_var = compute_variance(guidance_img, filter_size)
 
-    if input_img.ndim == 2:
-        # Operations of input image
-        input_img_mean = compute_mean(input_img, filter_size)
+    # Operations of input image
+    input_img_mean = compute_mean(input_img, filter_size)
 
-        # Compute a and and b
-        a = compute_a(input_img, guidance_img, input_img_mean, guidance_img_mean, guidance_img_var, filter_size, epsilon)
-        b = compute_b(input_img_mean, a, guidance_img_mean)
+    # Compute a and and b
+    a = compute_a(input_img, guidance_img, input_img_mean, guidance_img_mean, guidance_img_var, filter_size, epsilon)
+    b = compute_b(input_img_mean, a, guidance_img_mean)
 
-        # Compute mean of a and b
-        a_mean = compute_mean(a, filter_size)
-        b_mean = compute_mean(b, filter_size)
+    # Compute mean of a and b
+    a_mean = compute_mean(a, filter_size)
+    b_mean = compute_mean(b, filter_size)
 
-        # Compute final filtered image q and normalize
-        q = compute_q(a_mean, b_mean, input_img)
+    # Compute final filtered image q and normalize
+    q = compute_q(a_mean, b_mean, input_img)
 
-        return a_mean, b_mean, q
+    return a_mean, b_mean, q
 
 
 def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
@@ -331,24 +328,29 @@ if __name__ == "__main__":
     # Perform Guided Upsampling
 
     # Approach (1):
-    a_mean_1, b_mean_1, filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+    upsample_size = (guidance_img.shape[0], guidance_img.shape[1])
+    a_mean_1, b_mean_1, filtered_img_1 = guided_upsampling(resize(input_img, upsample_size), guidance_img, filter_size, epsilon)
 
     # Approach (2):
-    #a_mean_2, b_mean_2, filtered_img_2 = guided_upsampling(input_img, resize(guidance_img, input_img.shape), filter_size, epsilon)
-    #a_mean_2_resized = resize(a_mean_2, guidance_img.shape)
-    #b_mean_2_resized = resize(b_mean_2, guidance_img.shape)
-    #filtered_img_2 = compute_q(a_mean_2_resized, b_mean_2_resized, guidance_img)
+    downsample_size = (input_img.shape[0], input_img.shape[1])
+    a_mean_2, b_mean_2, filtered_img_2 = guided_upsampling(input_img, resize(guidance_img, downsample_size), filter_size, epsilon)
+    a_mean_2_resized = resize(a_mean_2, guidance_img.shape)
+    b_mean_2_resized = resize(b_mean_2, guidance_img.shape)
+    filtered_img_2_r = compute_q(a_mean_2_resized[:, :, 0], b_mean_2_resized[:, :, 0], guidance_img)
+    filtered_img_2_g = compute_q(a_mean_2_resized[:, :, 1], b_mean_2_resized[:, :, 1], guidance_img)
+    filtered_img_2_b = compute_q(a_mean_2_resized[:, :, 2], b_mean_2_resized[:, :, 2], guidance_img)
+    filtered_img_2 = np.dstack((filtered_img_2_r, filtered_img_2_g, filtered_img_2_b))
 
     # Calculate PSNR
     psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
     psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
-    #psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
-    #psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+    psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+    psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
-    #print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2, psnr_filtered_1, psnr_upsampled_1))
+    print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2, psnr_filtered_1, psnr_upsampled_1))
 
     # Plot result
     plot_result(input_img, guidance_img, filtered_img_1)
-    #plot_result(input_img, guidance_img, filtered_img_2)
+    plot_result(input_img, guidance_img, filtered_img_2)
 
