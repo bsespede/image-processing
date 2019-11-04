@@ -23,10 +23,12 @@ def compute_psnr(img1, img2):
 
     # Compute mse
     mse = 0
-    for y in img1.shape[0]:
-        for x in img1.shape[1]:
-            diff = img1[y, x] - img2[y, x]
-            mse += diff * diff
+    for y in range(img1.shape[0]):
+        for x in range(img1.shape[1]):
+            diff_r = img1[y, x, 0] - img2[y, x, 0]
+            diff_g = img1[y, x, 1] - img2[y, x, 1]
+            diff_b = img1[y, x, 2] - img2[y, x, 2]
+            mse += diff_r * diff_r + diff_g* diff_g + diff_b * diff_b
 
     # Normalize mse
     mse /= img1.shape[0] * img2.shape[1]
@@ -325,9 +327,9 @@ def prepare_imgs(input_filename, downsample_ratio):
     guidance_img_intensities = rgb2gray(initial_img)
 
     # This is a waste of memory but simplifies code
-    guidance_img[:, :, 0] = guidance_img_intensities
-    guidance_img[:, :, 1] = guidance_img_intensities
-    guidance_img[:, :, 2] = guidance_img_intensities
+    guidance_img[:, :, 0] = guidance_img_intensities[:, :] * 255
+    guidance_img[:, :, 1] = guidance_img_intensities[:, :] * 255
+    guidance_img[:, :, 2] = guidance_img_intensities[:, :] * 255
 
     # Downsample original image
     input_img = resize(initial_img, (initial_img.shape[0] // downsample_ratio, initial_img.shape[1] // downsample_ratio), anti_aliasing=True)
@@ -335,7 +337,7 @@ def prepare_imgs(input_filename, downsample_ratio):
     return input_img, guidance_img, initial_img
 
 
-def plot_result(input_img, guidance_img, filtered_img, output_filename):
+def plot_result(input_img, guidance_img, filtered_img):
 
     # Prepare the figure
     fig, axes = plt.subplots(nrows=1, ncols=3)
@@ -351,7 +353,7 @@ def plot_result(input_img, guidance_img, filtered_img, output_filename):
 
     plt.tight_layout()
     plt.show()
-    plt.savefig(output_filename)
+
     return
 
 
@@ -360,8 +362,8 @@ if __name__ == "__main__":
 
     # Set Parameters
     downsample_ratio = 5.0
-    filter_size = 11
-    epsilon = 1
+    filter_size = 3
+    epsilon = 1.0
 
     # Parse Parameter
     if len(sys.argv) != 2:
@@ -392,5 +394,7 @@ if __name__ == "__main__":
     print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2, psnr_filtered_1, psnr_upsampled_1))
 
     # Plot result
-    plot_result(input_img, guidance_img, filtered_img_2, "method2.png")
-    plot_result(input_img, guidance_img, filtered_img_1, "method1.png")
+    compute_variance(input_img, filter_size)
+    plot_result(input_img, guidance_img, filtered_img_1)
+    plot_result(input_img, guidance_img, filtered_img_2)
+
