@@ -17,29 +17,16 @@ def compute_psnr(img1, img2):
       @return: Peak signal-to-noise ratio between the first and second image
     """
 
-    # check images have same size
-    if img1.shape != img2.shape:
-        return -1
-
     # Compute mse
-    mse = 0
-    for y in range(img1.shape[0]):
-        for x in range(img1.shape[1]):
-            diff_r = img1[y, x, 0] - img2[y, x, 0]
-            diff_g = img1[y, x, 1] - img2[y, x, 1]
-            diff_b = img1[y, x, 2] - img2[y, x, 2]
-            mse += diff_r * diff_r + diff_g* diff_g + diff_b * diff_b
+    img1 = img1.astype(np.float64) / 255.0
+    img2 = img2.astype(np.float64) / 255.0
 
-    # Normalize mse
-    mse /= img1.shape[0] * img2.shape[1]
+    mse = np.mean((img1 - img2) ** 2)
     if mse == 0:
         return np.inf
 
-    # Compute psnr
-    max_value = 1.0
-    psnr = 10 * np.log10(max_value / np.sqrt(mse))
-
-    return psnr
+    maxValue = 1.0
+    return 10 * np.log2(maxValue / mse)
 
 
 def compute_mean(image, filter_size):
@@ -308,18 +295,128 @@ def plot_result(input_img, guidance_img, filtered_img):
     return
 
 
+def approach_1(input_img, guidance_img, filter_size, epsilon):
+
+    upsample_size = (guidance_img.shape[0], guidance_img.shape[1])
+    a_mean_1, b_mean_1, filtered_img_1 = guided_upsampling(resize(input_img, upsample_size), guidance_img, filter_size, epsilon)
+
+    return filtered_img_1
+
+
+def approach_2(input_img, guidance_img, filter_size, epsilon):
+
+    downsample_size = (input_img.shape[0], input_img.shape[1])
+    a_mean_2, b_mean_2, filtered_img_2 = guided_upsampling(input_img, resize(guidance_img, downsample_size), filter_size, epsilon)
+
+    a_mean_2_resized = resize(a_mean_2, guidance_img.shape)
+    b_mean_2_resized = resize(b_mean_2, guidance_img.shape)
+    filtered_img_2_r = compute_q(a_mean_2_resized[:, :, 0], b_mean_2_resized[:, :, 0], guidance_img)
+    filtered_img_2_g = compute_q(a_mean_2_resized[:, :, 1], b_mean_2_resized[:, :, 1], guidance_img)
+    filtered_img_2_b = compute_q(a_mean_2_resized[:, :, 2], b_mean_2_resized[:, :, 2], guidance_img)
+    filtered_img_2 = np.dstack((filtered_img_2_r, filtered_img_2_g, filtered_img_2_b))
+
+    return filtered_img_2
+
+def test_suite():
+
+    # Define parameters to test
+    input_images = ['monarch.png']
+    epsilons = [0.001, 1, 1000]
+    filters_sizes = [3, 7, 15]
+    downsampling_rates = [2, 8, 16]
+
+    # Do tests and fill arrays
+    for input_filename in input_images:
+
+        id_test = 0
+        result_figures = []
+        result_runs = []
+
+        # Create figure for approach1 (eps vs filter_size)
+        fig_img1, axes_img1 = plt.subplots(nrows=3, ncols=3)
+
+        # Create figure for approach2 (eps vs filter_size)
+        fig_img2, axes_img2 = plt.subplots(nrows=3, ncols=3)
+
+        # Create figure for downsampling comparison of both approaches
+        fig_img_ds, axes_img_ds = plt.subplots(nrows=2, ncols=3)
+
+        for epsilon_index in range(len(epsilons)):
+            for filter_size_index in range(len(filters_sizes)):
+                for downsample_rate_index in range(len(downsampling_rates)):
+
+                    # Get the array values
+                    epsilon = epsilons[epsilon_index]
+                    filter_size = filters_sizes[filter_size_index]
+                    downsample_rate = downsampling_rates[downsample_rate_index]
+
+                    print("Running " + input_filename + " with params: eps = " + str(epsilon) + ", size = " + str(filter_size) + ", downsample = " + str(downsample_rate))
+                    input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_rate)
+
+                    time_approach_1 = time.time()
+                    filtered_img_1 = approach_1(input_img, guidance_img, filter_size, epsilon)
+                    time_approach_1 = time.time() - time_approach_1
+
+                    time_approach_2 = time.time()
+                    filtered_img_2 = approach_2(input_img, guidance_img, filter_size, epsilon)
+                    time_approach_2 = time.time() - time_approach_2
+
+                    psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
+                    psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+                    psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+                    psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+
+                    # If csv is empty add header
+                    if len(result_runs) == 0:
+                        result_header = ['epsilon', 'filter_size', 'downsample_rate', 'psnr_filtered_1', 'psnr_filtered_2', 'psnr_upsampled_1', 'psnr_upsampled_2', 'time_approach_1', 'time_approach_2']
+                        result_runs.append(result_header)
+
+                    # Append iteration result to csv
+                    result_run = [epsilon, filter_size, downsample_rate, '%.4f' % psnr_filtered_1, '%.4f' % psnr_filtered_2, '%.4f' % psnr_upsampled_1, '%.4f' %psnr_upsampled_2, '%.4f' % time_approach_1, '%.4f' % time_approach_2]
+                    result_runs.append(result_run)
+                    id_test += 1
+
+                    if epsilon_index == 1 and filter_size_index == 0:
+                        axes_img_ds[0, downsample_rate_index].set_title("approach_1: eps = " + str(epsilon) + ", fs = " + str(filter_size) + ", ds = " + str(downsample_rate))
+                        axes_img_ds[1, downsample_rate_index].set_title("approach_2: eps = " + str(epsilon) + ", fs = " + str(filter_size) + ", ds = " + str(downsample_rate))
+                        axes_img_ds[0, downsample_rate_index].imshow(filtered_img_1)
+                        axes_img_ds[1, downsample_rate_index].imshow(filtered_img_2)
+
+                    if downsample_rate_index == 0:
+                        # Fill the figure with the images
+                        axes_img1[epsilon_index, filter_size_index].set_title("eps = " + str(epsilon) + ", fs = " + str(filter_size))
+                        axes_img2[epsilon_index, filter_size_index].set_title("eps = " + str(epsilon) + ", fs = " + str(filter_size))
+                        axes_img1[epsilon_index, filter_size_index].imshow(filtered_img_1)
+                        axes_img2[epsilon_index, filter_size_index].imshow(filtered_img_2)
+
+        # Write figures
+        plt.tight_layout()
+        plt.show()
+        fig_img1.savefig('approach-1.png')
+        fig_img2.savefig('approach-2.png')
+        fig_img_ds.savefig('downsampling-ap1-ap2.png')
+
+        # Write CSV file with the PSNRS and timestamps
+        #csv_filename = input_filename + ".csv"
+        #pd.DataFrame(result_runs).to_csv(csv_filename, header=False, index=False, float_format='%.3f')
+
+    return
+
+
 if __name__ == "__main__":
-    start_time = time.time()
 
-    # Set Parameters
-    half_size = 3
-    downsample_ratio = 2.0
-    filter_size = 2 * half_size + 1
-    epsilon = 0.003
-
-    # Parse Parameter
+    # If no parameters then run complete test suite
     if len(sys.argv) != 2:
-        raise ValueError('Wrong arguments')
+        print('Running test suite...')
+        test_suite()
+        exit(0)
+
+    # Set some default parameters
+    start_time = time.time()
+    half_size = 3
+    downsample_ratio = 3
+    filter_size = 3
+    epsilon = 1
     input_filename = sys.argv[1]
 
     # Prepare Images
@@ -328,27 +425,19 @@ if __name__ == "__main__":
     # Perform Guided Upsampling
 
     # Approach (1):
-    upsample_size = (guidance_img.shape[0], guidance_img.shape[1])
-    a_mean_1, b_mean_1, filtered_img_1 = guided_upsampling(resize(input_img, upsample_size), guidance_img, filter_size, epsilon)
+    filtered_img_1 = approach_1(input_img, guidance_img, filter_size, epsilon)
 
     # Approach (2):
-    downsample_size = (input_img.shape[0], input_img.shape[1])
-    a_mean_2, b_mean_2, filtered_img_2 = guided_upsampling(input_img, resize(guidance_img, downsample_size), filter_size, epsilon)
-    a_mean_2_resized = resize(a_mean_2, guidance_img.shape)
-    b_mean_2_resized = resize(b_mean_2, guidance_img.shape)
-    filtered_img_2_r = compute_q(a_mean_2_resized[:, :, 0], b_mean_2_resized[:, :, 0], guidance_img)
-    filtered_img_2_g = compute_q(a_mean_2_resized[:, :, 1], b_mean_2_resized[:, :, 1], guidance_img)
-    filtered_img_2_b = compute_q(a_mean_2_resized[:, :, 2], b_mean_2_resized[:, :, 2], guidance_img)
-    filtered_img_2 = np.dstack((filtered_img_2_r, filtered_img_2_g, filtered_img_2_b))
+    filtered_img_2 = approach_2(input_img, guidance_img, filter_size, epsilon)
 
     # Calculate PSNR
     psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
-    psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
-
     psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+    psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
     psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
-    print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2, psnr_filtered_1, psnr_upsampled_1))
+    # Print information
+    print('Runtime: {} - [Approach 1: PSNR filtered: {:.4f} - PSNR upsampled: {:.4f}] [Approach 2: PSNR filtered: {:.4f} - PSNR upsampled: {:.4f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2, psnr_filtered_1, psnr_upsampled_1))
 
     # Plot result
     plot_result(input_img, guidance_img, filtered_img_1)
