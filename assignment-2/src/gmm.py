@@ -116,6 +116,7 @@ def train_gmm(X, C, max_iter, plot=False):
         print('Expectation step iteration ' + str(j))
         # E-step, compute gammas
         gamma = logsum_gamma(X, mu, sigma, alpha)
+        print('Finished expectation step')
 
         # M-step, update params of gaussian k
         print('Maximization step iteration ' + str(j))
@@ -137,6 +138,7 @@ def train_gmm(X, C, max_iter, plot=False):
                 cov_numerator += (gamma[k][i] * np.matmul(zero_mean_X, zero_mean_X.T))
             # now update params: cov
             sigma[k] = cov_numerator / gammas_sum
+        print('Finished maximization step')
 
     return alpha, mu, sigma
 
@@ -160,11 +162,10 @@ def logsum_gamma(X, mu, sigma, alpha):
     for i in range(N):
         for k in range(C):
             # compute z
-            U = LA.cholesky(sigma[k])
-            zero_mean_X = X[i] - mu[k].T
-            q = np.matmul(np.linalg.inv(U.T), zero_mean_X)
-            z[k] = -0.5 * np.matmul(q.T, q)
-            if (z[k] > z_max):
+            zero_mean_X = X[i] - mu[k]
+            sigma_inv = np.linalg.inv(sigma[k])
+            z[k] = -0.5 * np.matmul(np.matmul(zero_mean_X.T, sigma_inv), zero_mean_X)
+            if z[k] > z_max:
                 z_max = z[k]
             # compute c
             signs, logdet = LA.slogdet(sigma[k])
@@ -203,17 +204,15 @@ def logsum_max_k(X_proj, mu, sigma, alpha):
 
     for k in range(C):
         # compute z
-        U = LA.cholesky(sigma[k])
-        zero_mean_X = X_proj - mu[k].T
-        q = np.matmul(np.linalg.inv(U.T), zero_mean_X)
-        z[k] = -0.5 * np.matmul(q.T, q)
-
+        zero_mean_X = X_proj - mu[k]
+        sigma_inv = np.linalg.inv(sigma[k])
+        z[k] = -0.5 * np.matmul(np.matmul(zero_mean_X.T, sigma_inv), zero_mean_X)
         # compute log_c efficiently
         signs, logdet = LA.slogdet(sigma[k])
         log_c[k] = np.log(alpha[k]) - 0.5 * K * np.log(2 * np.pi) - 0.5 * logdet
 
     for k in range(C):
-        # compute a
+        # compute k of the maximum a
         a = log_c[k] + z[k]
         if a > max_a:
             max_a = a
@@ -268,9 +267,10 @@ def denoise():
 
     train_imgs = load_imgs("train_set")
     val_imgs = load_imgs("valid_set")
-    test_imgs = np.load("test_set.npy", allow_pickle=True).item()
+    #train_simple_data = np.load("simple.npy", allow_pickle=True)
 
     # train
+    print('Starting training')
     X = np.zeros((0, K))
     for img in train_imgs:
         train_img = img/255
@@ -278,14 +278,15 @@ def denoise():
     # remove means
     mean_X = np.mean(X, axis=1)
     X = X - mean_X[:, np.newaxis]
-
+    # start the actual training
     gmm = {}
     gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=1)
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6)
     plot(gmm['mu'][0], gmm['precisions'][0], W)
+    print('Finished training')
 
     # validate
-    img_number = 0
+    print('Starting validation')
     for val_img in val_imgs:
         F = np.zeros((0, K))
         clean_img = val_img / 255
@@ -302,7 +303,7 @@ def denoise():
         U = F.copy()  # Initialize with the noisy image patches
         N, K = U.shape
         for iter in range(0, maxiter):
-            for i in range(N):
+            for i in range(N):  # Initialize with the noisy image patches
                 X_proj = np.matmul(E, U[i])
                 max_k = logsum_max_k(X_proj, gmm['mu'], gmm['sigma'], gmm['alpha'])
                 U[i] = alpha * U[i] + (1 - alpha) * wiener_filter(U[i], F[i], E, gmm['precisions'][max_k], gmm['mu'][max_k], lamb)
