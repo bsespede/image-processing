@@ -41,17 +41,17 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     padded_right = add_padding(right_image, radius)
 
     window_size = 2 * radius + 1
-
     padded_windows_left = view_as_windows(padded_left, (window_size, window_size), 1)
     padded_windows_right = view_as_windows(padded_right, (window_size, window_size), 1)
 
-    for d in range(D):
-        for y in range(H):
-            for x in range(W):
+
+    for y in range(H):
+        for x in range(W):
+            window_left = padded_windows_left[y, x]
+            for d in range(D):
                 if x + d < W:
-                    window_left = padded_windows_left[y + radius, x + radius]
-                    window_right = padded_windows_right[y + radius, x + radius + d]
-                    cost_volume[y, x, d] = np.sum(np.power(window_left - window_right), 2)
+                    window_right = padded_windows_right[y, x + d]
+                    cost_volume[y, x, d] = np.sum((window_left - window_right)**2)
 
     return cost_volume
 
@@ -72,16 +72,15 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     padded_right = add_padding(right_image, radius)
 
     window_size = 2 * radius + 1
-
     padded_windows_left = view_as_windows(padded_left, (window_size, window_size), 1)
     padded_windows_right = view_as_windows(padded_right, (window_size, window_size), 1)
 
-    for d in range(D):
-        for y in range(H):
-            for x in range(W):
-                if x + d + radius < W and y + radius < H:
-                    window_left = padded_windows_left[y + radius, x + radius]
-                    window_right = padded_windows_right[y + radius, x + radius + d]
+    for y in range(H):
+        for x in range(W):
+            window_left = padded_windows_left[y, x]
+            for d in range(D):
+                if x + d < W:
+                    window_right = padded_windows_right[y, x + d]
                     cost_volume[y, x, d] = np.sum(np.abs(window_left - window_right))
 
     return cost_volume
@@ -109,25 +108,20 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
 
     window_norm = 1.0 / (window_size**2)
 
-    for d in range(D):
-        for y in range(H):
-            for x in range(W):
+    for y in range(H):
+        for x in range(W):
+            window_left = padded_windows_left[y, x]
+            window_left_mean = window_norm * np.sum(window_left)
+            window_left_no_mean = window_left - window_left_mean
+            denominator_left = np.sum(window_left_no_mean ** 2)
+            for d in range(D):
                 if x + d < W:
-                    window_left = padded_windows_left[y + radius, x + radius]
-                    window_right = padded_windows_right[y + radius, x + radius + d]
-
-                    window_left_mean = window_norm * np.sum(window_left)
+                    window_right = padded_windows_right[y, x + d]
                     window_right_mean = window_norm * np.sum(window_right)
-
-                    window_left_no_mean = window_left - window_left_mean
                     window_right_no_mean = window_right - window_right_mean
-
                     numerator = np.sum(np.multiply(window_left_no_mean, window_right_no_mean))
-
-                    denominator_left = np.sum(np.power(window_left_no_mean, 2))
-                    denominator_right = np.sum(np.power(window_right_no_mean, 2))
+                    denominator_right = np.sum(window_right_no_mean**2)
                     denominator = np.sqrt(denominator_left * denominator_right)
-
                     cost_volume[y, x, d] = numerator / denominator
 
     return cost_volume
@@ -177,7 +171,7 @@ def main():
     plt.tight_layout()
 
     # Use either SAD, NCC or SSD to compute the cost volume
-    cv = compute_cost_volume_ssd(im0g, im1g, disparities, radius)
+    cv = compute_cost_volume_ncc(im0g, im1g, disparities, radius)
 
     for d in range(disparities):
         curr_cv = cv[:, :, d]
