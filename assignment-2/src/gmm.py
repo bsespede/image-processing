@@ -39,26 +39,25 @@ def reconstruct_average(P):
     return p
 
 
-def wiener_filter(U, F, E, precisions, means, lamb, max_k):
+def wiener_filter(U, F, E, precision, mean, lamb):
     """
     Applies the wiener filter to N patches each having K pixels.
     The parameters of a learned GMM with C kernels are passed as an argument.
 
-    :param U: (N,K) denoised patches from previous step
-    :param F: (N,K) noisy patches
-    :param E: (K,K) matrix that projects patches onto a set of zero-mean patches
-    :param precisions: (C,K,K) precisions of the GMM
-    :param means: (C,K) mean values of the GMM
+    :param U: (K) denoised patch from previous step
+    :param F: (K) noisy patch
+    :param E: (K,K) matrix that projects patch onto a set of zero-mean patches
+    :param precision: (K,K) precisions of the best GMM
+    :param mean: (K) mean values of the best GMM
     :param lamb: lambda parameter of the Wiener filter
-    :param max_k: the most suitable kernel for the projected patch
-    :return: (N,K) result of the wiener filter, equivalent to x_i^~ in Algorithm 1
+    :return: (K) result of the wiener filter, equivalent to x_i^~ in Algorithm 1
     """
     N, K = F.shape
-    A = np.linalg.inv(np.matmul(np.matmul(E.T, precisions[max_k]), E + lamb * np.eye(K)))
-    b = np.matmul(E.T, np.matmul(precisions[max_k], means[max_k]))
+    A = np.linalg.inv(np.matmul(np.matmul(E.T, precision), E + lamb * np.eye(K)))
+    b = np.matmul(E.T, np.matmul(precision, mean))
 
     for i in range(0, N):
-        U[i, :] = np.matmul(A, (b + lamb * F[i, :]))
+        U = np.matmul(A, (b + lamb * F))
 
     return U
 
@@ -114,16 +113,17 @@ def train_gmm(X, C, max_iter, plot=False):
         sigma[k] = np.matmul(sigma[k].T, sigma[k])
 
     for j in range(max_iter):
-        print('E-STEP iter ' + str(j))
+        print('Expectation step iteration ' + str(j))
         # E-step, compute gammas
         gamma = logsum_gamma(X, mu, sigma, alpha)
+        print('Finished expectation step')
 
         # M-step, update params of gaussian k
-        print('M-STEP iter ' + str(j))
+        print('Maximization step iteration ' + str(j))
         for k in range(C):
             # pre-compute some stuff for: alphas, mean
             gammas_sum = 0
-            gammas_sum_scaled = np.zeros(K)
+            gammas_sum_scaled = np.zeros((K))
             for i in range(N):
                 gammas_sum += gamma[k][i]
                 gammas_sum_scaled += gamma[k][i] * X[i]
@@ -138,9 +138,7 @@ def train_gmm(X, C, max_iter, plot=False):
                 cov_numerator += (gamma[k][i] * np.matmul(zero_mean_X, zero_mean_X.T))
             # now update params: cov
             sigma[k] = cov_numerator / gammas_sum
-
-            if plot:
-                plot(mu[k], sigma[k], np.sqrt(K))
+        print('Finished maximization step')
 
     return alpha, mu, sigma
 
@@ -167,7 +165,7 @@ def logsum_gamma(X, mu, sigma, alpha):
             zero_mean_X = X[i] - mu[k]
             sigma_inv = np.linalg.inv(sigma[k])
             z[k] = -0.5 * np.matmul(np.matmul(zero_mean_X.T, sigma_inv), zero_mean_X)
-            if (z[k] > z_max):
+            if z[k] > z_max:
                 z_max = z[k]
             # compute c
             signs, logdet = LA.slogdet(sigma[k])
@@ -196,7 +194,7 @@ def logsum_max_k(X_proj, mu, sigma, alpha):
     :param alpha: (C) current weight of each kernel
     :return: gamma: (C,N) prob of multivar gaussian for each patch
     """
-    N, K = X_proj.shape
+    K = X_proj.shape
     C, K = mu.shape
     z = np.zeros(C)
     log_c = np.zeros(C)
@@ -204,23 +202,21 @@ def logsum_max_k(X_proj, mu, sigma, alpha):
     max_k = -1
     max_a = -np.inf
 
-    for i in range(K):
-        for k in range(C):
-            # compute z
-            zero_mean_X = X_proj[i] - mu[k]
-            sigma_inv = np.linalg.inv(sigma[k])
-            z[k] = -0.5 * np.matmul(np.matmul(zero_mean_X.T, sigma_inv), zero_mean_X)
+    for k in range(C):
+        # compute z
+        zero_mean_X = X_proj - mu[k]
+        sigma_inv = np.linalg.inv(sigma[k])
+        z[k] = -0.5 * np.matmul(np.matmul(zero_mean_X.T, sigma_inv), zero_mean_X)
+        # compute log_c efficiently
+        signs, logdet = LA.slogdet(sigma[k])
+        log_c[k] = np.log(alpha[k]) - 0.5 * K * np.log(2 * np.pi) - 0.5 * logdet
 
-            # compute log_c efficiently
-            signs, logdet = LA.slogdet(sigma[k])
-            log_c[k] = np.log(alpha[k]) - 0.5 * K * np.log(2 * np.pi) - 0.5 * logdet
-
-        for k in range(C):
-            # compute a
-            a = log_c[k] + z[k]
-            if a > max_a:
-                max_a = a
-                max_k = k
+    for k in range(C):
+        # compute k of the maximum a
+        a = log_c[k] + z[k]
+        if a > max_a:
+            max_a = a
+            max_k = k
 
     return max_k
 
@@ -271,9 +267,10 @@ def denoise():
 
     train_imgs = load_imgs("train_set")
     val_imgs = load_imgs("valid_set")
-    test_imgs = np.load("test_set.npy", allow_pickle=True).item()
+    #train_simple_data = np.load("simple.npy", allow_pickle=True)
 
     # train
+    print('Starting training')
     X = np.zeros((0, K))
     for img in train_imgs:
         train_img = img/255
@@ -281,38 +278,46 @@ def denoise():
     # remove means
     mean_X = np.mean(X, axis=1)
     X = X - mean_X[:, np.newaxis]
-
+    # start the actual training
     gmm = {}
-    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=3)
+    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=1)
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6)
     plot(gmm['mu'][0], gmm['precisions'][0], W)
+    print('Finished training')
 
     # validate
-    F = np.zeros((0, K))
-    clean_img = val_imgs[0] / 255
-    noisy_img = get_noisy_img(clean_img)
-    F = np.vstack((F, view_as_windows(noisy_img, (W, W), 1).reshape(-1, K)))
-    MM, NN, _, _ = F.shape
+    print('Starting validation')
+    for val_img in val_imgs:
+        F = np.zeros((0, K))
+        clean_img = val_img / 255
+        noisy_img = get_noisy_img(clean_img)
+        F = np.vstack((F, view_as_windows(noisy_img, (W, W), 1).reshape(-1, K)))
+        MM, NN = F.shape
 
-    lamb = 100.0
-    alpha = 0.5
-    maxiter = 5
-    E = get_e_matrix(K)
+        lamb = 100.0
+        alpha = 0.5
+        maxiter = 5
+        E = get_e_matrix(K)
 
-    # Use Algorithm 1 for Patch-Denoising
-    U = F.copy()  # Initialize with the noisy image patches
-    for iter in range(0, maxiter):
-        X_proj = np.matmul(E, U)
-        max_k = logsum_max_k(X_proj, gmm['mu'], gmm['sigma'], gmm['alpha'])
-        U = alpha * U + (1 - alpha) * wiener_filter(U, F, E, gmm['precisions'], gmm['mu'], lamb, max_k)
-        u = reconstruct_average(U.reshape(MM, NN, W, W))
+        # Use Algorithm 1 for Patch-Denoising
+        U = F.copy()  # Initialize with the noisy image patches
+        N, K = U.shape
+        for iter in range(0, maxiter):
+            for i in range(N):  # Initialize with the noisy image patches
+                X_proj = np.matmul(E, U[i])
+                max_k = logsum_max_k(X_proj, gmm['mu'], gmm['sigma'], gmm['alpha'])
+                U[i] = alpha * U[i] + (1 - alpha) * wiener_filter(U[i], F[i], E, gmm['precisions'][max_k], gmm['mu'][max_k], lamb)
+            u = reconstruct_average(U.reshape(MM, NN, W, W))
+            psnr_denoised = compute_psnr(u, clean_img)
+            print("Iter: {} - PSNR: {}".format(iter, psnr_denoised))
+
+        psnr_noisy = compute_psnr(noisy_img, clean_img)
         psnr_denoised = compute_psnr(u, clean_img)
-        print("Iter: {} - PSNR: {}".format(iter, psnr_denoised))
+        print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
 
-    psnr_noisy = compute_psnr(noisy_img, clean_img)
-    psnr_denoised = compute_psnr(u, clean_img)
-
-    print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
+        # dump results
+        plt.imshow(dict, cmap="gray")
+        plt.show()
 
 
 if __name__ == "__main__":
