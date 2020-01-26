@@ -35,22 +35,21 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     """
 
     H, W = left_image.shape
-    cost_volume = np.zeros((H, W, D))
+    cost_volume = np.full((H, W, D), np.inf)
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
 
     window_size = 2 * radius + 1
-    padded_windows_left = view_as_windows(padded_left, (window_size, window_size), 1)
-    padded_windows_right = view_as_windows(padded_right, (window_size, window_size), 1)
-
+    padded_windows_left = view_as_windows(padded_left, (window_size, window_size))
+    padded_windows_right = view_as_windows(padded_right, (window_size, window_size))
 
     for y in range(H):
         for x in range(W):
             window_left = padded_windows_left[y, x]
             for d in range(D):
-                if x + d < W:
-                    window_right = padded_windows_right[y, x + d]
+                if x - d > 0:
+                    window_right = padded_windows_right[y, x - d]
                     cost_volume[y, x, d] = np.sum((window_left - window_right)**2)
 
     return cost_volume
@@ -66,21 +65,21 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
     H, W = left_image.shape
-    cost_volume = np.zeros((H, W, D))
+    cost_volume = np.full((H, W, D), np.inf)
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
 
     window_size = 2 * radius + 1
-    padded_windows_left = view_as_windows(padded_left, (window_size, window_size), 1)
-    padded_windows_right = view_as_windows(padded_right, (window_size, window_size), 1)
+    padded_windows_left = view_as_windows(padded_left, (window_size, window_size))
+    padded_windows_right = view_as_windows(padded_right, (window_size, window_size))
 
     for y in range(H):
         for x in range(W):
             window_left = padded_windows_left[y, x]
             for d in range(D):
-                if x + d < W:
-                    window_right = padded_windows_right[y, x + d]
+                if x - d >= 0:
+                    window_right = padded_windows_right[y, x - d]
                     cost_volume[y, x, d] = np.sum(np.abs(window_left - window_right))
 
     return cost_volume
@@ -96,15 +95,15 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
     H, W = left_image.shape
-    cost_volume = np.zeros((H, W, D))
+    cost_volume = np.full((H, W, D), np.inf)
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
 
     window_size = 2 * radius + 1
 
-    padded_windows_left = view_as_windows(padded_left, (window_size, window_size), 1)
-    padded_windows_right = view_as_windows(padded_right, (window_size, window_size), 1)
+    padded_windows_left = view_as_windows(padded_left, (window_size, window_size))
+    padded_windows_right = view_as_windows(padded_right, (window_size, window_size))
 
     window_norm = 1.0 / (window_size**2)
 
@@ -115,14 +114,14 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
             window_left_no_mean = window_left - window_left_mean
             denominator_left = np.sum(window_left_no_mean ** 2)
             for d in range(D):
-                if x + d < W:
-                    window_right = padded_windows_right[y, x + d]
+                if x - d > 0:
+                    window_right = padded_windows_right[y, x - d]
                     window_right_mean = window_norm * np.sum(window_right)
                     window_right_no_mean = window_right - window_right_mean
                     numerator = np.sum(np.multiply(window_left_no_mean, window_right_no_mean))
                     denominator_right = np.sum(window_right_no_mean**2)
                     denominator = np.sqrt(denominator_left * denominator_right)
-                    cost_volume[y, x, d] = numerator / denominator
+                    cost_volume[y, x, d] = 1 - numerator / denominator
 
     return cost_volume
 
@@ -152,10 +151,19 @@ def compute_sgm(cv, f):
     return
 
 
+def compute_wta(cost_volume, D):
+    """
+    Compute the disparity map using WTA
+    :param cost_volume: cost volume of shape (H,W,D)
+    :return: pixel wise disparity map of shape (H,W)
+    """
+    return cost_volume.argmin(axis=2) / D
+
+
 def main():
     # Set parameters
-    disparities = 10
-    radius = 5
+    D = 100
+    radius = 2
 
     # Load input images
     im0 = imread("data/Adirondack_left.png")
@@ -171,20 +179,20 @@ def main():
     plt.tight_layout()
 
     # Use either SAD, NCC or SSD to compute the cost volume
-    cv = compute_cost_volume_ncc(im0g, im1g, disparities, radius)
+    cost_volume = compute_cost_volume_ssd(im0g, im1g, D, radius)
+    cost_volume_wta = compute_wta(cost_volume, D)
 
-    for d in range(disparities):
-        curr_cv = cv[:, :, d]
-        plt.figure()
-        plt.imshow(curr_cv)
-        plt.show()
+    # Plot the resulting disparity map
+    plt.figure()
+    plt.imshow(cost_volume_wta)
+    plt.show()
 
     # Compute pairwise costs
-    H, W, D = cv.shape
+    H, W, D = cost_volume.shape
     f = get_pairwise_costs(H, W, D)
 
     # Compute SGM
-    disp = compute_sgm(cv, f)
+    disp = compute_sgm(cost_volume, f)
 
     # Plot result
     plt.figure()
