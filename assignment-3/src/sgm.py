@@ -136,7 +136,7 @@ def compute_accuracy(disparity_map, ground_truth, occlusion_mask, disparity_thre
     param ground_truth: the corresponding ground truth disparity for the previous map (H, W)
     param occlusion_mask: points that don't have ground truth, should be ignored (H, W)
     param disparity_threshold: scalar to threshold disparities
-    return percentage of accurate points
+    return percentage of accurate pointsx`
     '''
     H, W = disparity_map.shape
     correct_points = np.zeros((H, W))
@@ -155,9 +155,18 @@ def dp_chain(g, f, m):
     g: unary costs with shape (H,W,D)
     f: pairwise costs with shape (H,W,D,D)
     m: messages with shape (H,W,D)
+    :return: updated messages
     '''
-    # TODO
-    return
+    H, W, D = g.shape
+
+    for y in range(H):
+        for x in range(1, W):
+            cur_gm = g[y, x - 1, :] + m[y, x - 1, :]
+            cur_gm = np.repeat(cur_gm, D).reshape((D, D)).T
+            cur_f = f[y, x, :, :]
+            m[y, x, :] = np.amin(cur_gm + cur_f, axis=1)
+
+    return m
 
 
 def get_pairwise_costs(H, W, D, weights=None):
@@ -170,19 +179,48 @@ def get_pairwise_costs(H, W, D, weights=None):
              Note: If weight=None, then each spatial position gets exactly the same pairwise costs.
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
-    # TODO
-    return
+    pairwise_costs = np.zeros((D, D))
+    L0 = 0.0
+    L1 = 0.1
+    L2 = 0.2
+
+    for d1 in range(D):
+        for d2 in range(D):
+            if d1 == d2:
+                pairwise_costs[d1, d2] = L0
+            elif abs(d1 - d2) == 1:
+                pairwise_costs[d1, d2] = L1
+            else:
+                pairwise_costs[d1, d2] = L2
+
+    return np.broadcast_to(pairwise_costs, (H, W, D, D))
 
 
-def compute_sgm(cost_volume, f):
+def compute_sgm(cost_volume, pairwise_costs):
     """
     Compute the SGM
     :param cost_volume: cost volume of shape (H,W,D)
     :param f: Pairwise costs of shape (H,W,D,D)
     :return: pixel wise disparity map of shape (H,W)
     """
-    # TODO
-    return
+    H, W, D = cost_volume.shape
+    aggregated_volume = np.zeros((H, W, D, 4))
+
+    # direction 0: left-to-right
+    message_ltr = np.zeros((H, W, D))
+    aggregated_volume[:, :, :, 0] = dp_chain(cost_volume, pairwise_costs, message_ltr)
+
+    # ltr_cost_volume = ...
+    # rtl_cost_voume = ...
+    # utd_cost_volume = ...
+    # dtu_cost_volume = ...
+
+    # belief step
+    summed_aggregations = np.sum(aggregated_volume, axis=3)
+    cost_volume += summed_aggregations
+    disparity_map = compute_wta(cost_volume)
+
+    return disparity_map
 
 
 def main():
@@ -204,20 +242,15 @@ def main():
     plt.tight_layout()
 
     # Use either SAD, NCC or SSD to compute the cost volume
+    print('Computing initial cost volume')
     cost_volume = compute_cost_volume_ncc(im0g, im1g, D, radius)
-    cost_volume_wta = compute_wta(cost_volume)
-
-    # Plot the resulting disparity map
-    plt.figure()
-    plt.imshow(cost_volume_wta, cmap=plt.cm.jet)
-    plt.colorbar()
-    plt.show()
 
     # Compute pairwise costs
     H, W, D = cost_volume.shape
     f = get_pairwise_costs(H, W, D)
 
     # Compute SGM
+    print('Computing aggregated cost volume')
     disp = compute_sgm(cost_volume, f)
 
     # Plot result
