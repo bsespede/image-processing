@@ -294,23 +294,17 @@ def main():
             figure, axes = plt.subplots(2, 3)
             figure.suptitle('Threshold: ' + str(disparity_threshold) + ', Radius: ' + str(similarity_radius))
             axes[0, 0].set_title('SAD')
-            axes[0, 0].set(xlabel='Acc: ' + "%.5f" % accuracy_sad + '')
             axes[0, 1].set_title('SSD')
-            axes[0, 1].set(xlabel='Acc: ' + "%.5f" % accuracy_ssd + '')
             axes[0, 2].set_title('NCC')
-            axes[0, 2].set(xlabel='Acc: ' + "%.5f" % accuracy_ncc + '')
             axes[1, 0].set_title('SAD + SGM')
-            axes[1, 0].set(xlabel='Acc: ' + "%.5f" % accuracy_sad_aggr + '')
             axes[1, 1].set_title('SSD + SGM')
-            axes[1, 1].set(xlabel='Acc: ' + "%.5" % accuracy_ssd_aggr + '')
             axes[1, 2].set_title('NCC + SGM')
-            axes[1, 2].set(xlabel='Acc: ' + "%.5f" % accuracy_ncc_aggr + '')
-            axes[0, 0].imshow(disparity_sad * occlusion_mask)
-            axes[0, 1].imshow(disparity_ssd * occlusion_mask)
-            axes[0, 2].imshow(disparity_ncc * occlusion_mask)
-            axes[1, 0].imshow(disparity_sad_aggr * occlusion_mask)
-            axes[1, 1].imshow(disparity_ssd_aggr * occlusion_mask)
-            axes[1, 2].imshow(disparity_ncc_aggr * occlusion_mask)
+            axes[0, 0].imshow(disparity_sad)
+            axes[0, 1].imshow(disparity_ssd)
+            axes[0, 2].imshow(disparity_ncc)
+            axes[1, 0].imshow(disparity_sad_aggr)
+            axes[1, 1].imshow(disparity_ssd_aggr)
+            axes[1, 2].imshow(disparity_ncc_aggr)
 
             # Print output to file for table
             with open("results.txt", "a") as my_file:
@@ -324,7 +318,6 @@ def main():
             plt.tight_layout()
             plt.show()
             figure.savefig('acc-' + str(disparity_threshold) +'-rad-' + str(similarity_radius) + '.png', dpi=1500)
-
 
 if __name__== "__main__":
     main()
