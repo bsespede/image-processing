@@ -26,12 +26,12 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
     H, W = left_image.shape
-    cost_volume = np.zeros((H, W, D))
+    window_size = 2 * radius + 1
+    cost_volume = np.full((H, W, D), float(window_size**2))
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
 
-    window_size = 2 * radius + 1
     padded_windows_left = view_as_windows(padded_left, (window_size, window_size))
     padded_windows_right = view_as_windows(padded_right, (window_size, window_size))
 
@@ -56,12 +56,12 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
     H, W = left_image.shape
-    cost_volume = np.zeros((H, W, D))
+    window_size = 2 * radius + 1
+    cost_volume = np.full((H, W, D), float(window_size**2))
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
 
-    window_size = 2 * radius + 1
     padded_windows_left = view_as_windows(padded_left, (window_size, window_size))
     padded_windows_right = view_as_windows(padded_right, (window_size, window_size))
 
@@ -141,9 +141,9 @@ def compute_accuracy(disparity_map, ground_truth, occlusion_mask, disparity_thre
 
     for y in range(H):
         for x in range(W):
-            if occlusion_mask[y, x] == 1.0:
+            if occlusion_mask[y, x] != 0.0:
                 total_points += 1.0
-                if np.abs(disparity_map - ground_truth) < disparity_threshold:
+                if np.abs(disparity_map[y, x] - ground_truth[y, x]) < disparity_threshold:
                     correct_points += 1.0
 
     return correct_points / total_points
@@ -168,7 +168,7 @@ def dp_chain(g, f, m):
     return m
 
 
-def get_pairwise_costs(H, W, D, weights=None):
+def get_pairwise_costs(H, W, D, L1, L2, weights=None):
     """
     :param H: height of input image
     :param W: width of input image
@@ -179,14 +179,11 @@ def get_pairwise_costs(H, W, D, weights=None):
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
     pairwise_costs = np.zeros((D, D))
-    L0 = 0
-    L1 = 1
-    L2 = 2
 
     for d1 in range(D):
         for d2 in range(D):
             if d1 == d2:
-                pairwise_costs[d1, d2] = L0
+                pairwise_costs[d1, d2] = 0.0
             elif abs(d1 - d2) == 1:
                 pairwise_costs[d1, d2] = L1
             else:
@@ -237,6 +234,8 @@ def compute_sgm(cost_volume, pairwise_costs):
 def main():
     # Maximum disparity
     D = 64
+    L1 = 1
+    L2 = 2
 
     # Load input images
     im0 = imread("data/cones_left.png")
@@ -245,19 +244,19 @@ def main():
     im1g = rgb2gray(im1)
 
     # Load other images
-    ground_truth = imread("data/cones_gt.png")
-    occlusion_mask = imread("data/cones_mask.png")
+    ground_truth = imread("data/cones_gt.png") / 255.0
+    occlusion_mask = imread("data/cones_mask.png") / 255.0
 
     # Compute pairwise costs
     H, W = im0g.shape
-    f = get_pairwise_costs(H, W, D)
+    f = get_pairwise_costs(H, W, D, L1, L2)
 
     # For each accuracy threshold
     for disparity_threshold in [1, 2, 3]:
         # For each similarity window radius
         for similarity_radius in [1, 2, 5]:
             # Initial message
-            print('Starting result loop for (accuracy:' + str(disparity_threshold) + ', radius: '+ str(similarity_radius) + ')')
+            print('Starting result loop for (threshold:' + str(disparity_threshold) + ', radius: '+ str(similarity_radius) + ')')
 
             # Use either SAD, NCC or SSD to compute the cost volume
             print('Computing initial cost volume using SAD metric')
@@ -284,41 +283,47 @@ def main():
             disparity_ncc_aggr = compute_sgm(cost_volume_ncc, f)
 
             # Compute accuracies for each variation
-            accuracy_sad = compute_accuracy(disparity_sad, ground_truth, occlusion_mask, disparity_threshold)
-            accuracy_ssd = compute_accuracy(disparity_ssd, ground_truth, occlusion_mask, disparity_threshold)
-            accuracy_ncc = compute_accuracy(disparity_ncc, ground_truth, occlusion_mask, disparity_threshold)
-            accuracy_sad_aggr = compute_accuracy(disparity_sad_aggr, ground_truth, occlusion_mask, disparity_threshold)
-            accuracy_ssd_aggr = compute_accuracy(disparity_ssd_aggr, ground_truth, occlusion_mask, disparity_threshold)
-            accuracy_ncc_aggr = compute_accuracy(disparity_ncc_aggr, ground_truth, occlusion_mask, disparity_threshold)
+            accuracy_sad = compute_accuracy(disparity_sad * D, ground_truth * D, occlusion_mask, disparity_threshold)
+            accuracy_ssd = compute_accuracy(disparity_ssd * D, ground_truth * D, occlusion_mask, disparity_threshold)
+            accuracy_ncc = compute_accuracy(disparity_ncc * D, ground_truth * D, occlusion_mask, disparity_threshold)
+            accuracy_sad_aggr = compute_accuracy(disparity_sad_aggr * D, ground_truth * D, occlusion_mask, disparity_threshold)
+            accuracy_ssd_aggr = compute_accuracy(disparity_ssd_aggr * D, ground_truth * D, occlusion_mask, disparity_threshold)
+            accuracy_ncc_aggr = compute_accuracy(disparity_ncc_aggr * D, ground_truth * D, occlusion_mask, disparity_threshold)
 
             # Build plots without aggregation
             figure, axes = plt.subplots(2, 3)
-            axes[0, 0].set_title('SAD (acc: ' + "%.3f" % accuracy_sad + ')')
-            axes[0, 1].set_title('SSD (acc: ' + "%.3f" % accuracy_ssd + ')')
-            axes[0, 2].set_title('NCC (acc: ' + "%.3f" % accuracy_ncc + ')')
-            axes[1, 0].set_title('SAD + SGM (acc: ' + "%.3f" % accuracy_sad_aggr + ')')
-            axes[1, 1].set_title('SSD + SGM (acc: ' + "%.3f" % accuracy_ssd_aggr + ')')
-            axes[1, 2].set_title('NCC + SGM (acc: ' + "%.3f" % accuracy_ncc_aggr + ')')
-            axes[0, 0].imshow(disparity_sad)
-            axes[0, 1].imshow(disparity_ssd)
-            axes[0, 2].imshow(disparity_ncc)
-            axes[1, 0].imshow(disparity_sad_aggr)
-            axes[1, 1].imshow(disparity_ssd_aggr)
-            axes[1, 2].imshow(disparity_ncc_aggr)
+            figure.suptitle('Threshold: ' + str(disparity_threshold) + ', Radius: ' + str(similarity_radius))
+            axes[0, 0].set_title('SAD')
+            axes[0, 0].set(xlabel='Acc: ' + "%.5f" % accuracy_sad + '')
+            axes[0, 1].set_title('SSD')
+            axes[0, 1].set(xlabel='Acc: ' + "%.5f" % accuracy_ssd + '')
+            axes[0, 2].set_title('NCC')
+            axes[0, 2].set(xlabel='Acc: ' + "%.5f" % accuracy_ncc + '')
+            axes[1, 0].set_title('SAD + SGM')
+            axes[1, 0].set(xlabel='Acc: ' + "%.5f" % accuracy_sad_aggr + '')
+            axes[1, 1].set_title('SSD + SGM')
+            axes[1, 1].set(xlabel='Acc: ' + "%.5" % accuracy_ssd_aggr + '')
+            axes[1, 2].set_title('NCC + SGM')
+            axes[1, 2].set(xlabel='Acc: ' + "%.5f" % accuracy_ncc_aggr + '')
+            axes[0, 0].imshow(disparity_sad * occlusion_mask)
+            axes[0, 1].imshow(disparity_ssd * occlusion_mask)
+            axes[0, 2].imshow(disparity_ncc * occlusion_mask)
+            axes[1, 0].imshow(disparity_sad_aggr * occlusion_mask)
+            axes[1, 1].imshow(disparity_ssd_aggr * occlusion_mask)
+            axes[1, 2].imshow(disparity_ncc_aggr * occlusion_mask)
 
-            # Print output for table
-
+            # Print output to file for table
             with open("results.txt", "a") as my_file:
-                my_file.write('SAD', 'no', disparity_threshold, similarity_radius, accuracy_sad)
-                my_file.write('SSD', 'no', disparity_threshold, similarity_radius, accuracy_ssd)
-                my_file.write('NCC', 'no', disparity_threshold, similarity_radius, accuracy_ncc)
-                my_file.write('SAD', 'yes', disparity_threshold, similarity_radius, accuracy_sad_aggr)
-                my_file.write('SSD', 'yes', disparity_threshold, similarity_radius, accuracy_ssd_aggr)
-                my_file.write('NCC', 'yes', disparity_threshold, similarity_radius, accuracy_ncc_aggr)
+                my_file.write('SAD, no,' + str(disparity_threshold) + ', ' + str(similarity_radius) + ', ' + str(accuracy_sad) + '\n')
+                my_file.write('SSD, no,' + str(disparity_threshold) + ', ' + str(similarity_radius) + ', ' + str(accuracy_ssd) + '\n')
+                my_file.write('NCC, no,' + str(disparity_threshold) + ', ' + str(similarity_radius) + ', ' + str(accuracy_ncc) + '\n')
+                my_file.write('SAD, yes,' + str(disparity_threshold) + ', ' + str(similarity_radius) + ', ' + str(accuracy_sad_aggr) + '\n')
+                my_file.write('SSD, yes,' + str(disparity_threshold) + ', ' + str(similarity_radius) + ', ' + str(accuracy_ssd_aggr) + '\n')
+                my_file.write('NCC, yes,' + str(disparity_threshold) + ', ' + str(similarity_radius) + ', ' + str(accuracy_ncc_aggr) + '\n')
 
             plt.tight_layout()
             plt.show()
-            figure.savefig('acc-' + str(disparity_threshold) +'-rad-' + str(similarity_radius) + '.png')
+            figure.savefig('acc-' + str(disparity_threshold) +'-rad-' + str(similarity_radius) + '.png', dpi=1500)
 
 
 if __name__== "__main__":
