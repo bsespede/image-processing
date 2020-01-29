@@ -25,9 +25,8 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     :param radius: Radius of the filter
     :return: cost volume of size (H,W,D)
     """
-
     H, W = left_image.shape
-    cost_volume = np.full((H, W, D), np.inf)
+    cost_volume = np.zeros((H, W, D))
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
@@ -57,7 +56,7 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
     H, W = left_image.shape
-    cost_volume = np.full((H, W, D), np.inf)
+    cost_volume = np.zeros((H, W, D))
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
@@ -87,16 +86,14 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
     H, W = left_image.shape
-    cost_volume = np.full((H, W, D), np.inf)
+    cost_volume = np.full((H, W, D), 1.0)
 
     padded_left = add_padding(left_image, radius)
     padded_right = add_padding(right_image, radius)
 
     window_size = 2 * radius + 1
-
     padded_windows_left = view_as_windows(padded_left, (window_size, window_size))
     padded_windows_right = view_as_windows(padded_right, (window_size, window_size))
-
     window_norm = 1.0 / (window_size**2)
 
     for y in range(H):
@@ -159,6 +156,7 @@ def dp_chain(g, f, m):
     '''
     H, W, D = g.shape
 
+    # Use the message passing scheme seen in the KU
     for y in range(H):
         for x in range(1, W):
             cur_gm = g[y, x - 1, :] + m[y, x - 1, :]
@@ -180,9 +178,9 @@ def get_pairwise_costs(H, W, D, weights=None):
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
     pairwise_costs = np.zeros((D, D))
-    L0 = 0.0
-    L1 = 0.1
-    L2 = 0.2
+    L0 = 0
+    L1 = 1
+    L2 = 2
 
     for d1 in range(D):
         for d2 in range(D):
@@ -204,20 +202,32 @@ def compute_sgm(cost_volume, pairwise_costs):
     :return: pixel wise disparity map of shape (H,W)
     """
     H, W, D = cost_volume.shape
-    aggregated_volume = np.zeros((H, W, D, 4))
 
-    # direction 0: left-to-right
+    # Direction: left-to-right
     message_ltr = np.zeros((H, W, D))
-    aggregated_volume[:, :, :, 0] = dp_chain(cost_volume, pairwise_costs, message_ltr)
+    cost_volume_ltr = cost_volume
+    message_ltr = dp_chain(cost_volume_ltr, pairwise_costs, message_ltr)
 
-    # ltr_cost_volume = ...
-    # rtl_cost_voume = ...
-    # utd_cost_volume = ...
-    # dtu_cost_volume = ...
+    # Direction: right-to-left
+    message_rtl = np.zeros((H, W, D))
+    cost_volume_rtl = np.flip(cost_volume, axis=1)
+    message_rtl = np.flip(dp_chain(cost_volume_rtl, np.flip(pairwise_costs), message_rtl), axis=1)
 
-    # belief step
-    summed_aggregations = np.sum(aggregated_volume, axis=3)
-    cost_volume += summed_aggregations
+    # Direction: up-to-down
+    message_utd = np.zeros((W, H, D))
+    cost_volume_utd = np.swapaxes(cost_volume, 0, 1)
+    message_utd = np.swapaxes(dp_chain(cost_volume_utd, np.swapaxes(pairwise_costs, 0, 1), message_utd), 0, 1)
+
+    # Direction: up-to-down
+    message_dtu = np.zeros((W, H, D))
+    cost_volume_dtu = np.flip(np.swapaxes(cost_volume, 0, 1), axis=1)
+    message_dtu = np.flip(np.swapaxes(dp_chain(cost_volume_dtu, np.flip(np.swapaxes(pairwise_costs, 0, 1), axis=1), message_dtu), 0, 1), axis=1)
+
+    # Belief propagation and WTA
+    cost_volume += message_ltr
+    cost_volume += message_rtl
+    cost_volume += message_utd
+    cost_volume += message_dtu
     disparity_map = compute_wta(cost_volume)
 
     return disparity_map
@@ -225,12 +235,12 @@ def compute_sgm(cost_volume, pairwise_costs):
 
 def main():
     # Set parameters
-    D = 65
+    D = 64
     radius = 2
 
     # Load input images
-    im0 = imread("data/Adirondack_left.png")
-    im1 = imread("data/Adirondack_right.png")
+    im0 = imread("data/cones_left.png")
+    im1 = imread("data/cones_right.png")
 
     im0g = rgb2gray(im0)
     im1g = rgb2gray(im1)
