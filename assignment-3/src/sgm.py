@@ -133,19 +133,20 @@ def compute_accuracy(disparity_map, ground_truth, occlusion_mask, disparity_thre
     param ground_truth: the corresponding ground truth disparity for the previous map (H, W)
     param occlusion_mask: points that don't have ground truth, should be ignored (H, W)
     param disparity_threshold: scalar to threshold disparities
-    return percentage of accurate pointsx`
+    return percentage of accurate points
     '''
     H, W = disparity_map.shape
-    correct_points = np.zeros((H, W))
+    correct_points = 0
+    total_points = 0
 
-    diff_wrt_gt = np.abs(disparity_map - ground_truth)
-    diff_wrt_gt_thr = np.where(diff_wrt_gt <= disparity_threshold)
-    correct_points[diff_wrt_gt_thr] = 1.0
+    for y in range(H):
+        for x in range(W):
+            if occlusion_mask[y, x] == 1.0:
+                total_points += 1.0
+                if np.abs(disparity_map - ground_truth) < disparity_threshold:
+                    correct_points += 1.0
 
-    unocc_points = np.where(occlusion_mask == 1.0)
-    total_points = len(unocc_points[0]) - 1
-
-    return np.sum(correct_points * occlusion_mask) / total_points
+    return correct_points / total_points
 
 def dp_chain(g, f, m):
     '''
@@ -159,10 +160,10 @@ def dp_chain(g, f, m):
     # Use the message passing scheme seen in the KU
     for y in range(H):
         for x in range(1, W):
-            cur_gm = g[y, x - 1, :] + m[y, x - 1, :]
-            cur_gm = np.repeat(cur_gm, D).reshape((D, D)).T
+            cur_g_m = g[y, x - 1, :] + m[y, x - 1, :]
+            cur_g_m = np.repeat(cur_g_m, D).reshape((D, D)).T
             cur_f = f[y, x, :, :]
-            m[y, x, :] = np.amin(cur_gm + cur_f, axis=1)
+            m[y, x, :] = np.amin(cur_g_m + cur_f, axis=1)
 
     return m
 
@@ -234,39 +235,90 @@ def compute_sgm(cost_volume, pairwise_costs):
 
 
 def main():
-    # Set parameters
+    # Maximum disparity
     D = 64
-    radius = 2
 
     # Load input images
     im0 = imread("data/cones_left.png")
     im1 = imread("data/cones_right.png")
-
     im0g = rgb2gray(im0)
     im1g = rgb2gray(im1)
 
-    # Plot input images
-    plt.figure(figsize=(8,4))
-    plt.subplot(121), plt.imshow(im0g, cmap='gray'), plt.title('Left')
-    plt.subplot(122), plt.imshow(im1g, cmap='gray'), plt.title('Right')
-    plt.tight_layout()
-
-    # Use either SAD, NCC or SSD to compute the cost volume
-    print('Computing initial cost volume')
-    cost_volume = compute_cost_volume_ncc(im0g, im1g, D, radius)
+    # Load other images
+    ground_truth = imread("data/cones_gt.png")
+    occlusion_mask = imread("data/cones_mask.png")
 
     # Compute pairwise costs
-    H, W, D = cost_volume.shape
+    H, W = im0g.shape
     f = get_pairwise_costs(H, W, D)
 
-    # Compute SGM
-    print('Computing aggregated cost volume')
-    disp = compute_sgm(cost_volume, f)
+    # For each accuracy threshold
+    for disparity_threshold in [1, 2, 3]:
+        # For each similarity window radius
+        for similarity_radius in [1, 2, 5]:
+            # Initial message
+            print('Starting result loop for (accuracy:' + str(disparity_threshold) + ', radius: '+ str(similarity_radius) + ')')
 
-    # Plot result
-    plt.figure()
-    plt.imshow(disp)
-    plt.show()
+            # Use either SAD, NCC or SSD to compute the cost volume
+            print('Computing initial cost volume using SAD metric')
+            cost_volume_sad = compute_cost_volume_sad(im0g, im1g, D, similarity_radius)
+            print('Computing initial cost volume using SSD metric')
+            cost_volume_ssd = compute_cost_volume_ssd(im0g, im1g, D, similarity_radius)
+            print('Computing initial cost volume using NCC metric')
+            cost_volume_ncc = compute_cost_volume_ncc(im0g, im1g, D, similarity_radius)
+
+            # Compute disparity maps without aggregation
+            print('Computing disparity map for SAD based cost volume')
+            disparity_sad = compute_wta(cost_volume_sad)
+            print('Computing disparity map for SSD based cost volume')
+            disparity_ssd = compute_wta(cost_volume_ssd)
+            print('Computing disparity map for NCC based cost volume')
+            disparity_ncc = compute_wta(cost_volume_ncc)
+
+            # Compute aggregated disparity maps using SGM
+            print('Computing aggregated disparities for SAD based cost volume')
+            disparity_sad_aggr = compute_sgm(cost_volume_sad, f)
+            print('Computing aggregated disparities for SSD based cost volume')
+            disparity_ssd_aggr = compute_sgm(cost_volume_ssd, f)
+            print('Computing aggregated disparities for NCC based cost volume')
+            disparity_ncc_aggr = compute_sgm(cost_volume_ncc, f)
+
+            # Compute accuracies for each variation
+            accuracy_sad = compute_accuracy(disparity_sad, ground_truth, occlusion_mask, disparity_threshold)
+            accuracy_ssd = compute_accuracy(disparity_ssd, ground_truth, occlusion_mask, disparity_threshold)
+            accuracy_ncc = compute_accuracy(disparity_ncc, ground_truth, occlusion_mask, disparity_threshold)
+            accuracy_sad_aggr = compute_accuracy(disparity_sad_aggr, ground_truth, occlusion_mask, disparity_threshold)
+            accuracy_ssd_aggr = compute_accuracy(disparity_ssd_aggr, ground_truth, occlusion_mask, disparity_threshold)
+            accuracy_ncc_aggr = compute_accuracy(disparity_ncc_aggr, ground_truth, occlusion_mask, disparity_threshold)
+
+            # Build plots without aggregation
+            figure, axes = plt.subplots(2, 3)
+            axes[0, 0].set_title('SAD (acc: ' + "%.3f" % accuracy_sad + ')')
+            axes[0, 1].set_title('SSD (acc: ' + "%.3f" % accuracy_ssd + ')')
+            axes[0, 2].set_title('NCC (acc: ' + "%.3f" % accuracy_ncc + ')')
+            axes[1, 0].set_title('SAD + SGM (acc: ' + "%.3f" % accuracy_sad_aggr + ')')
+            axes[1, 1].set_title('SSD + SGM (acc: ' + "%.3f" % accuracy_ssd_aggr + ')')
+            axes[1, 2].set_title('NCC + SGM (acc: ' + "%.3f" % accuracy_ncc_aggr + ')')
+            axes[0, 0].imshow(disparity_sad)
+            axes[0, 1].imshow(disparity_ssd)
+            axes[0, 2].imshow(disparity_ncc)
+            axes[1, 0].imshow(disparity_sad_aggr)
+            axes[1, 1].imshow(disparity_ssd_aggr)
+            axes[1, 2].imshow(disparity_ncc_aggr)
+
+            # Print output for table
+
+            with open("results.txt", "a") as my_file:
+                my_file.write('SAD', 'no', disparity_threshold, similarity_radius, accuracy_sad)
+                my_file.write('SSD', 'no', disparity_threshold, similarity_radius, accuracy_ssd)
+                my_file.write('NCC', 'no', disparity_threshold, similarity_radius, accuracy_ncc)
+                my_file.write('SAD', 'yes', disparity_threshold, similarity_radius, accuracy_sad_aggr)
+                my_file.write('SSD', 'yes', disparity_threshold, similarity_radius, accuracy_ssd_aggr)
+                my_file.write('NCC', 'yes', disparity_threshold, similarity_radius, accuracy_ncc_aggr)
+
+            plt.tight_layout()
+            plt.show()
+            figure.savefig('acc-' + str(disparity_threshold) +'-rad-' + str(similarity_radius) + '.png')
 
 
 if __name__== "__main__":
