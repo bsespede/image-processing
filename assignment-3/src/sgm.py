@@ -278,7 +278,7 @@ def main():
             print('Computing aggregated disparities for SAD based cost volume')
             disparity_sad_aggr = compute_sgm(cost_volume_sad, f)
             print('Computing aggregated disparities for SSD based cost volume')
-            disparity_ssd_aggr = compute_sgm(cost_volume_ssd, f)
+            disparity_ssd_aggr = compute_sgm(cost_volume_jussd, f)
             print('Computing aggregated disparities for NCC based cost volume')
             disparity_ncc_aggr = compute_sgm(cost_volume_ncc, f)
 
