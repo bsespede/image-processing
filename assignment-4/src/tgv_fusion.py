@@ -58,7 +58,7 @@ def make_K(M, N):
     @param N:
     @return: the K operator as described in Equation (5)
     """
-    I = np.eye(M * N, M * N)
+    I = scipy.sparse.identity(M * N)
     nabla, nabla_x, nabla_y = _make_nabla(M, N)
 
     K = sp.bmat([[nabla_x, -I, None],
@@ -115,10 +115,12 @@ def tgv2_pd(f, alpha, maxit):
     f = f.reshape(M * N, K)
 
     # make operators
-    K = make_K(M, N)
+    print('Computing K')
+    k = make_K(M, N)
     alpha1, alpha2 = alpha
 
     # used for calculation of the dataterm projection
+    print('Computing dataterm projection stuff')
     W = np.ones((M, N, K))
     Wis = np.asarray([compute_Wi(W, i) for i in range(K)])
     Wis = Wis.transpose(1, 2, 0)
@@ -139,23 +141,24 @@ def tgv2_pd(f, alpha, maxit):
     # compute equation (4)
     for it in range(0, maxit):
         print('Executing iteration ' + str(it))
-        # make sure to copy previous results
-        u_prev = np.copy(u)
-        v_prev = np.copy(v)
-        p_prev = np.copy(p)
-        q_prev = np.copy(q)
+        # make sure to concatenate flattened arrays beforehand so that sizes are correct
+        u_v = np.concatenate((u, v))
+        p_q = np.concatenate((p, q))
 
         # half step update for u and v
-        u_half = u_prev - tau * (K.T @ p_prev)
-        v_half = v_prev - tau * (K.T @ q_prev)
+        u_v_half = u_v - tau * (k.T @ p_q)
+        u_half = u_v_half[0: M * N]
+        v_half = u_v_half[M * N: 3 * M * N]
 
         # next step for u and v
         u_next = prox_sum_l1(u_half, f, tau, Wis)
         v_next = v_half
+        u_v_next = np.concatenate((u_next, v_next))
 
         # half step update for p and q
-        p_half = p_prev + sigma * (K @ (2 * u_next - u_prev))
-        q_half = q_prev + sigma * (K @ (2 * v_next - v_prev))
+        p_q_half = p_q + sigma * (k @ (2 * u_v_next - u_v))
+        p_half = p_q_half[0: 2 * M * N]
+        q_half = p_q_half[2 * M * N: 6 * M * N]
 
         # next step for p and q
         p_next = proj_ball(p_half, alpha1)
@@ -199,6 +202,6 @@ plt.savefig('energy.png')
 
 # Calculate Accuracy
 gt = np.load('data/gt.npy')
-accuracy = compute_accX(res, gt)
+accuracy = compute_accX(U, gt)
 print('Accuracy: ' + str(accuracy))
 
