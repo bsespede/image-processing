@@ -77,7 +77,10 @@ def proj_ball(Y, lamb):
     @param lamb: scalar hyperparameter lambda
     @return: projection result either 2xMN or 4xMN
     """
-    max_proj =  np.maximum(1,  (1/lamb) * np.sqrt(np.sum(Y**2, axis = 0)))
+    S, MN = Y.shape
+    ones = np.ones(MN)
+    norm = np.sqrt(np.sum(Y**2, axis=0))
+    max_proj = np.maximum(ones,  (1/lamb) * norm)
     return Y / max_proj
 
 
@@ -112,7 +115,7 @@ def tgv2_pd(f, alpha, maxit):
     """
     print('Precomputing stuff')
     M, N, K = f.shape
-    f = f.reshape(M * N, K)
+    f_flattened = f.reshape(M * N, K)
 
     # make operators
     print('Computing K')
@@ -131,7 +134,7 @@ def tgv2_pd(f, alpha, maxit):
     v = np.zeros((2 * M * N))
     p = np.zeros((2 * M * N))
     q = np.zeros((4 * M * N))
-    energy = np.zeros((1, maxit))
+    energy = np.zeros((maxit))
 
     # other algorithm parameters
     L = np.sqrt(12)
@@ -147,22 +150,24 @@ def tgv2_pd(f, alpha, maxit):
 
         # half step update for u and v
         u_v_half = u_v - tau * (k.T @ p_q)
-        u_half = u_v_half[0: M * N]
-        v_half = u_v_half[M * N: 3 * M * N]
+        u_half = u_v_half[0: len(u)]
+        v_half = u_v_half[len(u): len(u) + len(v)]
 
         # next step for u and v
-        u_next = prox_sum_l1(u_half, f, tau, Wis)
+        u_next = prox_sum_l1(u_half, f_flattened, tau, Wis)
         v_next = v_half
         u_v_next = np.concatenate((u_next, v_next))
 
         # half step update for p and q
         p_q_half = p_q + sigma * (k @ (2 * u_v_next - u_v))
-        p_half = p_q_half[0: 2 * M * N]
-        q_half = p_q_half[2 * M * N: 6 * M * N]
+        p_half = p_q_half[0: len(p)]
+        q_half = p_q_half[len(p): len(p) + len(q)]
 
-        # next step for p and q
-        p_next = proj_ball(p_half, alpha1)
-        q_next = proj_ball(q_half, alpha2)
+        # next step for p and q, make sure to reshape before and afterwards so that its treated in a pixelwise manner
+        p_half_reshaped = np.reshape(p_half, (2, M * N))
+        q_half_reshaped = np.reshape(q_half, (4, M * N))
+        p_next = np.reshape(proj_ball(p_half_reshaped, alpha1), (2 * M * N))
+        q_next = np.reshape(proj_ball(q_half_reshaped, alpha2), (4 * M * N))
 
         # update values for the next iteration
         u = u_next
@@ -175,9 +180,46 @@ def tgv2_pd(f, alpha, maxit):
         V = np.reshape(v, (2, M, N))
 
         # compute the energy of this iteration. eq (3) TODO
-        energy[0, it] = it
+        energy[it] = compute_energy(u, v, f, alpha)
 
     return U, V, energy
+
+
+def compute_energy(u, v, f, alpha):
+    """
+    @param u: MN flattened vector
+    @param v: tuple containing MN, MN flattened gradient vectors
+    @param f: the K observations of shape MxNxK
+    @param alpha: tuple containing alpha1 and alpha2
+    @return: the energy value for the iteration
+    """
+    alpha1, alpha2 = alpha
+    M, N, K = f.shape
+
+    # compute the regularization term
+    nabla, nabla_x, nabla_y = _make_nabla(M, N)
+    stacked_nablas = sp.bmat([[nabla, None], [None, nabla]], format='csr')
+    diag_nabla = sp.diags(sp.csr_matrix.diagonal(stacked_nablas), shape=(4 * M * N, 2 * M * N))
+    tgv_1 = nabla @ u - v
+    tgv_2 = diag_nabla @ v
+
+    # reshape to matrix and compute 21 norm
+    tgv_1 = np.reshape(tgv_1, (2, M, N))
+    tgv_2 = np.reshape(tgv_2, (4, M, N))
+    norm21_tgv_1 = np.sum(np.abs(np.sqrt(np.sum(tgv_1 ** 2, axis=1))))
+    norm21_tgv_2 = np.sum(np.abs(np.sqrt(np.sum(tgv_2 ** 2, axis=1))))
+
+    # compute the data term -> couldn't broadcast it properly so the code looks disgusting and inefficient, SORRY :(
+    U = np.reshape(u, (M, N))
+    norm1_data_diff = 0
+    for k in range(K):
+        data_diff = f[:, :, k] - U
+        norm1_data_diff += np.sum(np.abs(data_diff))
+
+    # now compute the energy
+    energy = alpha1 * norm21_tgv_1 + alpha2 * norm21_tgv_2 + norm1_data_diff
+
+    return energy
 
 
 # Load Observations
@@ -192,6 +234,7 @@ plt.imshow(U)
 plt.suptitle('Fused image')
 plt.colorbar()
 plt.savefig('fused.png')
+plt.close()
 
 # Plot energy
 plt.plot(energy)
@@ -199,6 +242,7 @@ plt.suptitle('Energy over time')
 plt.ylabel('Energy')
 plt.xlabel('Iteration')
 plt.savefig('energy.png')
+plt.close()
 
 # Calculate Accuracy
 gt = np.load('data/gt.npy')
