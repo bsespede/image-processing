@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import scipy.sparse as sp
-
+from mpl_toolkits.mplot3d import Axes3D
 
 def _make_nabla(M, N):
     row = np.arange(0, M * N)
@@ -58,7 +58,7 @@ def make_K(M, N):
     @param N:
     @return: the K operator as described in Equation (5)
     """
-    I = scipy.sparse.identity(M * N)
+    I = sp.identity(M * N)
     nabla, nabla_x, nabla_y = _make_nabla(M, N)
 
     K = sp.bmat([[nabla_x, -I, None],
@@ -227,18 +227,48 @@ samples = np.array([np.load('data/observation{}.npy'.format(i)) for i in range(0
 f = samples.transpose(1,2,0)
 
 # perform TGV-Fusion
-U, V, energy = tgv2_pd(f, alpha=(0.8, 0.3), maxit=300)
+alpha1=0.8
+alpha2=0.2
+U, V, energy = tgv2_pd(f, alpha=(alpha1, alpha2), maxit=100)
 
-# plot fusion
+# plot fusion 2d
 plt.imshow(U)
-plt.suptitle('Fused image')
+plt.suptitle('Fused disparity map (alpha1=' + str(alpha1) + ', alpha2=' + str(alpha2) + ')')
 plt.colorbar()
-plt.savefig('fused.png')
+plt.savefig('fused-2D.png')
+plt.close()
+
+# plot fusion 3d
+fig = plt.figure()
+ax = Axes3D(fig)
+plt.suptitle('Fused disparity map (alpha1=' + str(alpha1) + ', alpha2=' + str(alpha2) + ')')
+z_points = []
+x_points = []
+y_points = []
+for x in range(250):
+    for y in range(250):
+        z_points.append(U[y, x])
+        x_points.append(x)
+        y_points.append(y)
+ax.scatter(x_points, y_points, z_points, s=, c=z_points)
+plt.show()
+plt.savefig('fused-3D.png')
+plt.close()
+
+# plot gradients
+figure, axes = plt.subplots(1, 2)
+figure.suptitle('Gradients (alpha1=' + str(alpha1) + ', alpha2=' + str(alpha2) + ')')
+axes[0].set_title('Horizontal')
+axes[1].set_title('Vertical')
+axes[0].imshow(V[0])
+axes[1].imshow(V[1])
+plt.show()
+figure.savefig('gradient.png')
 plt.close()
 
 # plot energy
 plt.plot(energy)
-plt.suptitle('Energy over time')
+plt.suptitle('Energy over time (alpha1=' + str(alpha1) + ', alpha2=' + str(alpha2) + ')')
 plt.ylabel('Energy')
 plt.xlabel('Iteration')
 plt.savefig('energy.png')
@@ -246,6 +276,6 @@ plt.close()
 
 # calculate accuracy
 gt = np.load('data/gt.npy')
-accuracy = compute_accX(U, gt)
+accuracy = compute_accX(U, gt, 0.00000001)
 print('Accuracy: ' + str(accuracy))
 
