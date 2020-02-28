@@ -179,7 +179,7 @@ def tgv2_pd(f, alpha, maxit):
         U = np.reshape(u, (M, N))
         V = np.reshape(v, (2, M, N))
 
-        # compute the energy of this iteration. eq (3) TODO
+        # compute the energy of this iteration. eq (3)
         energy[it] = compute_energy(u, v, f, alpha)
 
     return U, V, energy
@@ -222,21 +222,21 @@ def compute_energy(u, v, f, alpha):
     return energy
 
 
-# Load Observations
+# load Observations
 samples = np.array([np.load('data/observation{}.npy'.format(i)) for i in range(0,9)])
 f = samples.transpose(1,2,0)
 
-# Perform TGV-Fusion
-U, V, energy = tgv2_pd(f, alpha=(0.8, 0.3), maxit=300)  # TODO: set appropriate parameters
+# perform TGV-Fusion
+U, V, energy = tgv2_pd(f, alpha=(0.8, 0.3), maxit=300)
 
-# Plot fusion
+# plot fusion
 plt.imshow(U)
 plt.suptitle('Fused image')
 plt.colorbar()
 plt.savefig('fused.png')
 plt.close()
 
-# Plot energy
+# plot energy
 plt.plot(energy)
 plt.suptitle('Energy over time')
 plt.ylabel('Energy')
@@ -244,7 +244,7 @@ plt.xlabel('Iteration')
 plt.savefig('energy.png')
 plt.close()
 
-# Calculate Accuracy
+# calculate accuracy
 gt = np.load('data/gt.npy')
 accuracy = compute_accX(U, gt)
 print('Accuracy: ' + str(accuracy))
