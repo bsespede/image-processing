@@ -58,7 +58,7 @@ def make_K(M, N):
     @param N:
     @return: the K operator as described in Equation (5)
     """
-    I = np.eye(M, N)
+    I = np.eye(M * N, M * N)
     nabla, nabla_x, nabla_y = _make_nabla(M, N)
 
     K = sp.bmat([[nabla_x, -I, None],
@@ -110,76 +110,91 @@ def tgv2_pd(f, alpha, maxit):
     @param maxit: maximum number of iterations
     @return: tuple of u with shape MxN, v with shape 2xMxN, and an array of size maxit with the energy of each step
     """
+    print('Precomputing stuff')
     M, N, K = f.shape
     f = f.reshape(M * N, K)
 
     # make operators
-    k = make_K(M,N)
+    K = make_K(M, N)
     alpha1, alpha2 = alpha
 
-    # Used for calculation of the dataterm projection
+    # used for calculation of the dataterm projection
     W = np.ones((M, N, K))
     Wis = np.asarray([compute_Wi(W, i) for i in range(K)])
     Wis = Wis.transpose(1, 2, 0)
     Wis = Wis.reshape(M * N, K)
 
-    # Lipschitz constant of K
+    # initialize primal and dual variables to zero
+    u = np.zeros((M * N))
+    v = np.zeros((2 * M * N))
+    p = np.zeros((2 * M * N))
+    q = np.zeros((4 * M * N))
+    energy = np.zeros((1, maxit))
+
+    # other algorithm parameters
     L = np.sqrt(12)
-
-    # initialize primal variables
-    u_x = np.zeros((M * N))
-    v_y = np.zeros((M * N))
-
-    # initialize dual variables
-    p_x = np.zeros((M * N))
-    q_y = np.zeros((M * N))
-
-    # primal and dual step size
     tau = 0.1
     sigma = 1 / tau / (L ** 2)
 
-    # others
-    energy_steps = []
-
     # compute equation (4)
     for it in range(0, maxit):
+        print('Executing iteration ' + str(it))
+        # make sure to copy previous results
+        u_prev = np.copy(u)
+        v_prev = np.copy(v)
+        p_prev = np.copy(p)
+        q_prev = np.copy(q)
 
-        u_x_last = np.copy(u_x)
-        v_y_last = np.copy(v_y)
+        # half step update for u and v
+        u_half = u_prev - tau * (K.T @ p_prev)
+        v_half = v_prev - tau * (K.T @ q_prev)
 
-        p_x_last = np.copy(p_x)
-        q_y_last = np.copy(q_y)
+        # next step for u and v
+        u_next = prox_sum_l1(u_half, f, tau, Wis)
+        v_next = v_half
 
-        u_x_half = u_x_last - tau * (k.T @ p_x)
-        v_y_half = v_y_last - tau * (k.T @ q_y)
+        # half step update for p and q
+        p_half = p_prev + sigma * (K @ (2 * u_next - u_prev))
+        q_half = q_prev + sigma * (K @ (2 * v_next - v_prev))
 
-        u_x = prox_sum_l1(u_x_half, f, tau, Wis)
-        v_y = v_y_half
+        # next step for p and q
+        p_next = proj_ball(p_half, alpha1)
+        q_next = proj_ball(q_half, alpha2)
 
-        p_x_half = p_x_last + sigma * (k @ (2 * u_x - u_x_last))
-        q_y_half = q_y_last + sigma * (k @ (2 * v_y - v_y_last))
+        # update values for the next iteration
+        u = u_next
+        v = v_next
+        p = p_next
+        q = q_next
 
-        p_x = proj_ball(p_x_half, alpha1)
-        q_y = proj_ball(q_y_half, alpha2)
-
-        # reshape to matrix form TODO
+        # reshape to original matrix form
+        U = np.reshape(u, (M, N))
+        V = np.reshape(v, (2, M, N))
 
         # compute the energy of this iteration. eq (3) TODO
+        energy[0, it] = it
 
-    return
+    return U, V, energy
+
 
 # Load Observations
 samples = np.array([np.load('data/observation{}.npy'.format(i)) for i in range(0,9)])
 f = samples.transpose(1,2,0)
 
 # Perform TGV-Fusion
-res, v, energy = tgv2_pd(f, alpha=(0.0, 0.0), maxit=300)  # TODO: set appropriate parameters
+U, V, energy = tgv2_pd(f, alpha=(0.8, 0.3), maxit=300)  # TODO: set appropriate parameters
 
-# Plot result
+# Plot fusion
+plt.imshow(U)
+plt.suptitle('Fused image')
+plt.colorbar()
+plt.savefig('fused.png')
+
+# Plot energy
 plt.plot(energy)
 plt.suptitle('Energy over time')
-plt.ylabel('energy')
-plt.xlabel('iteration')
+plt.ylabel('Energy')
+plt.xlabel('Iteration')
 plt.savefig('energy.png')
 
 # Calculate Accuracy
